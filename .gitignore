@@ -33,6 +33,8 @@ yarn-error.log*
 
 # vercel
 .vercel
+AGENTS.md
+CLAUDE.md
 
 # typescript
 next-env.d.ts
@@ -44,3 +46,5 @@ next-env.d.ts
 /.codex/
 /outputs/
 /work/
+
+.vercel
