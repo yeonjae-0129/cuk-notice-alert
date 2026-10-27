@@ -40,6 +40,7 @@ export async function saveSubscription(input: Omit<StoredSubscription, "id">) {
       p256dh: input.p256dh,
       auth: input.auth,
       keywords: input.keywords,
+      school_id: input.schoolId,
       active: true,
       updated_at: new Date().toISOString(),
     }),
@@ -49,7 +50,8 @@ export async function saveSubscription(input: Omit<StoredSubscription, "id">) {
 }
 
 export async function listSubscriptions() {
-  return await request("push_subscriptions?select=id,endpoint,p256dh,auth,keywords&active=eq.true") as StoredSubscription[];
+  const rows = await request("push_subscriptions?select=id,endpoint,p256dh,auth,keywords,school_id&active=eq.true") as Array<Omit<StoredSubscription, "schoolId"> & { school_id?: StoredSubscription["schoolId"] }>;
+  return rows.map(({ school_id, ...row }) => ({ ...row, schoolId: school_id ?? "catholic" }));
 }
 
 export async function listSent(articleIds: string[]) {

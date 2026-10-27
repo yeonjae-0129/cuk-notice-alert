@@ -12,7 +12,7 @@ export async function POST(request: Request) {
   try {
     const subscription = schema.parse(await request.json());
     await sendPush(subscription, {
-      title: "가대알림 테스트",
+      title: "캠퍼스알림 테스트",
       body: "실제 웹 푸시 알림이 정상적으로 도착했어요.",
       url: "/",
       tag: "cuk-notice-test",

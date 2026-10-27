@@ -1,20 +1,24 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Bell, BellRing, BookOpen, Check, ChevronRight, ExternalLink, GraduationCap, ListFilter, LogOut, Newspaper, Plus, RefreshCw, Search, Send, ShieldCheck, Sparkles, X } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowLeft, Bell, BellRing, BookOpen, Check, ChevronRight, ExternalLink, ListFilter, Newspaper, Plus, RefreshCw, Search, Send, ShieldCheck, Sparkles, X } from "lucide-react";
+import { UNIVERSITIES, type UniversityId } from "@/lib/notices";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
-type Notice = { id: string; title: string; category: string; department: string; date: string; url: string };
+type Notice = { id: string; universityId: UniversityId; universityName: string; title: string; category: string; department: string; date: string; url: string };
 type PushState = "idle" | "working" | "enabled" | "test-ready" | "sent" | "denied" | "unsupported" | "config-missing" | "error";
 type PageView = "settings" | "preview" | "matches" | "all";
 
-const fallbackNotices: Notice[] = [
-  { id: "sample-1", title: "2026학년도 2학기 교내장학금 추가 신청 안내", category: "장학", department: "학생지원팀", date: "2026.09.18", url: "https://www.catholic.ac.kr/ko/campuslife/notice.do" },
-  { id: "sample-2", title: "2026 동계 현장실습 및 인턴십 참가자 모집", category: "취창업", department: "취업지원팀", date: "2026.09.17", url: "https://www.catholic.ac.kr/ko/campuslife/notice.do" },
-];
+const fallbackNotices = (schoolId: UniversityId): Notice[] => {
+  const university = UNIVERSITIES.find((item) => item.id === schoolId) ?? UNIVERSITIES[0];
+  return [
+    { id: `${schoolId}-sample-1`, universityId: schoolId, universityName: university.name, title: "장학금 추가 신청 안내", category: "장학", department: "학생지원팀", date: "2026.10.26", url: university.sourceUrl },
+    { id: `${schoolId}-sample-2`, universityId: schoolId, universityName: university.name, title: "현장실습 및 인턴십 참가자 모집", category: "취창업", department: "취업지원팀", date: "2026.10.25", url: university.sourceUrl },
+  ];
+};
 
 const matchingKeywords = (notice: Notice, keywords: string[]) => {
   const text = `${notice.title} ${notice.category} ${notice.department}`.toLowerCase();
@@ -28,9 +32,11 @@ function applicationServerKey(value: string) {
 }
 
 export default function Home() {
-  const [screen, setScreen] = useState<"login" | "dashboard">("login");
+  const [screen, setScreen] = useState<"school" | "dashboard">("school");
+  const [schoolId, setSchoolId] = useState<UniversityId>("catholic");
+  const [schoolQuery, setSchoolQuery] = useState("");
   const [view, setView] = useState<PageView>("settings");
-  const [keywords, setKeywords] = useState(["장학", "인턴"]);
+  const [keywords, setKeywords] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
@@ -40,6 +46,7 @@ export default function Home() {
   const [sourceStatus, setSourceStatus] = useState<"loading" | "live" | "error">("loading");
   const [fetchedAt, setFetchedAt] = useState("");
   const [pushState, setPushState] = useState<PushState>("idle");
+  const university = UNIVERSITIES.find((item) => item.id === schoolId) ?? UNIVERSITIES[0];
   const matches = useMemo(() => notices.filter((notice) => matchingKeywords(notice, keywords).length), [keywords, notices]);
   const push = hasRun && !checking ? matches[0] ?? null : null;
   const pageNotices = view === "matches" ? matches : notices;
@@ -55,20 +62,20 @@ export default function Home() {
     window.history.back();
   }
 
-  async function loadNotices() {
+  const loadNotices = useCallback(async (selectedSchool = schoolId) => {
     setSourceStatus("loading");
     try {
-      const response = await fetch("/api/notices", { cache: "no-store" });
+      const response = await fetch(`/api/notices?school=${selectedSchool}`, { cache: "no-store" });
       if (!response.ok) throw new Error("공지 조회 실패");
       const data = await response.json() as { notices: Notice[]; fetchedAt: string };
       setNotices(data.notices);
       setFetchedAt(data.fetchedAt);
       setSourceStatus("live");
     } catch {
-      setNotices(fallbackNotices);
+      setNotices(fallbackNotices(selectedSchool));
       setSourceStatus("error");
     }
-  }
+  }, [schoolId]);
 
   async function getBrowserSubscription(create: boolean) {
     if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
@@ -105,7 +112,7 @@ export default function Home() {
       const response = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subscription: subscription.toJSON(), keywords }),
+        body: JSON.stringify({ subscription: subscription.toJSON(), keywords, schoolId }),
       });
       setPushState(response.ok ? "enabled" : response.status === 503 ? "test-ready" : "error");
     } catch {
@@ -143,6 +150,17 @@ export default function Home() {
     setHasRun(false); setError("");
   }
 
+  function chooseSchool(nextSchoolId: UniversityId) {
+    setSchoolId(nextSchoolId);
+    setKeywords([]);
+    setNotices([]);
+    setHasRun(false);
+    setError("");
+    setPushState("idle");
+    setView("settings");
+    setScreen("dashboard");
+  }
+
   async function simulateArrival() {
     if (!keywords.length) return setError("알림을 받을 키워드를 하나 이상 추가해 주세요.");
     setChecking(true); setHasRun(false);
@@ -152,10 +170,11 @@ export default function Home() {
   }
 
   useEffect(() => {
+    if (screen !== "dashboard") return;
     const initial = window.setTimeout(() => { void loadNotices(); }, 0);
     const interval = window.setInterval(() => { void loadNotices(); }, 300_000);
     return () => { window.clearTimeout(initial); window.clearInterval(interval); };
-  }, []);
+  }, [loadNotices, screen]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -199,34 +218,41 @@ export default function Home() {
         const values = (input as { keywords?: unknown }).keywords;
         if (!Array.isArray(values) || !values.length || values.some((value) => typeof value !== "string" || !value.trim())) throw new Error("유효한 키워드가 필요합니다.");
         const next = [...new Set(values.map((value) => String(value).trim()))].slice(0, 5);
-        setScreen("dashboard"); setView("settings"); setKeywords(next); setHasRun(false);
+        setSchoolId("catholic"); setScreen("dashboard"); setView("settings"); setKeywords(next); setHasRun(false);
         return { keywords: next, status: "configured" };
       },
     }, { signal: lifecycle.signal })).catch(() => undefined);
     return () => lifecycle.abort();
   }, []);
 
-  if (screen === "login") return (
+  if (screen === "school") {
+    const visibleUniversities = UNIVERSITIES.filter((item) => item.name.includes(schoolQuery.trim()) || item.shortName.includes(schoolQuery.trim()));
+    return (
     <main className="login-shell">
       <div className="ambient ambient-one" /><div className="ambient ambient-two" />
-      <section className="login-card" aria-labelledby="login-title">
+      <section className="login-card school-picker" aria-labelledby="login-title">
         <div className="brand-mark" aria-hidden="true"><Bell /></div>
         <Badge className="demo-badge">DEMO</Badge>
-        <h1 id="login-title">가대알림</h1>
-        <p className="login-lead">학교 공지, 기다리지 말고<br />내 관심사만 알림으로.</p>
-        <p className="login-copy">가톨릭대학교 공식 공지에서 원하는 키워드를 찾아 실제 웹 푸시로 알려드려요.</p>
-        <Button className="login-button" size="lg" onClick={() => { setScreen("dashboard"); setView("settings"); }}><GraduationCap /> 학교 계정 로그인 체험 <ChevronRight /></Button>
-        <div className="privacy-note"><ShieldCheck /> 실제 학교 계정 정보는 입력하거나 전송하지 않습니다.</div>
+        <h1 id="login-title">캠퍼스알림</h1>
+        <p className="login-lead">내 학교 공지,<br />관심사만 알림으로.</p>
+        <p className="login-copy">학교를 선택하면 해당 대학의 공식 공지에서 관심 키워드를 찾아 알려드려요.</p>
+        <label className="school-search" htmlFor="school-search"><Search /><Input id="school-search" value={schoolQuery} onChange={(event) => setSchoolQuery(event.target.value)} placeholder="학교 이름을 검색하세요" /></label>
+        {schoolQuery.trim() && <div className="school-list" aria-label="검색된 학교 목록">
+          {visibleUniversities.map((item) => <button key={item.id} onClick={() => chooseSchool(item.id)}><strong>{item.name}</strong><ChevronRight /></button>)}
+          {!visibleUniversities.length && <p>연결된 학교를 찾지 못했어요.</p>}
+        </div>}
+        <div className="privacy-note"><ShieldCheck /> 학교 계정 정보는 입력하거나 전송하지 않습니다.</div>
       </section>
-      <p className="mockup-label">공식 공개 공지 연결 · 학교 계정 로그인은 데모입니다.</p>
+      <p className="mockup-label">7개 대학 공지 채널</p>
     </main>
   );
+  }
 
   return (
     <main className="app-shell">
       <header className="app-header">
-        <div className="brand-row"><div className="small-brand"><Bell /></div><div><strong>가대알림</strong><span>공지 키워드 푸시</span></div></div>
-        <div className="profile-row"><div className="profile-copy"><strong>김가대</strong><span>재학생 · 가상 사용자</span></div><div className="avatar">김</div><Button variant="ghost" size="icon" aria-label="로그아웃" onClick={() => { setScreen("login"); setView("settings"); }}><LogOut /></Button></div>
+        <div className="brand-row"><div className="small-brand"><Bell /></div><div><strong>캠퍼스알림</strong><span>{university.shortName} 공지 키워드 푸시</span></div></div>
+        <div className="profile-row"><div className="profile-copy"><strong>{university.shortName} 재학생</strong><span>가상 사용자</span></div><button className="avatar" type="button" aria-label="학교 다시 선택" title="학교 다시 선택" onClick={() => { setScreen("school"); setView("settings"); }}>학</button></div>
       </header>
 
       {view === "settings" ? <div className="workspace settings-view">
@@ -243,7 +269,7 @@ export default function Home() {
             {!keywords.length ? <p className="empty-keywords">아직 등록한 관심 키워드가 없어요.</p> : keywords.map((keyword) => <span className="keyword-chip" key={keyword}>{keyword}<button onClick={() => removeKeyword(keyword)} aria-label={`${keyword} 키워드 삭제`}><X /></button></span>)}
           </div>
           <div className="rule-card">
-            <div><Search /><span><small>검색 범위</small><strong>공식 홈페이지 최신 공지 {notices.length}건</strong></span></div>
+            <div><Search /><span><small>검색 범위</small><strong>{university.shortName} 공식 최신 공지 {notices.length}건</strong></span></div>
             <div><Check /><span><small>일치 조건</small><strong>키워드 하나 이상</strong></span></div>
           </div>
           <div className="push-setup-card">
@@ -255,7 +281,7 @@ export default function Home() {
             <p>{pushState === "idle" && "권한을 허용하면 앱이 닫혀 있어도 알림을 받을 수 있어요."}{pushState === "enabled" && "현재 키워드와 구독이 서버에 저장됐어요."}{pushState === "test-ready" && "브라우저 구독은 준비됐지만 자동 발송 DB 설정이 필요해요."}{pushState === "sent" && "운영체제 알림 창에서 실제 도착 여부를 확인해 주세요."}{pushState === "denied" && "브라우저 설정에서 이 사이트의 알림을 허용해 주세요."}{pushState === "unsupported" && "이 브라우저는 웹 푸시를 지원하지 않아요."}{pushState === "config-missing" && "서버의 푸시 키 설정이 아직 필요해요."}{pushState === "error" && "푸시 설정에 실패했어요. 잠시 후 다시 시도해 주세요."}</p>
           </div>
           <Button className="simulate-button" size="lg" onClick={simulateArrival} disabled={checking}>{checking ? <><span className="spinner" /> 공식 공지를 확인하고 있어요</> : <><RefreshCw /> 최신 공지 확인하고 미리보기</>}</Button>
-          <p className="demo-note">{sourceStatus === "live" ? `공식 홈페이지 연결됨${fetchedAt ? ` · ${new Date(fetchedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 확인` : ""} · 5분마다 갱신` : sourceStatus === "error" ? "공식 홈페이지 연결 실패 · 샘플 공지를 표시합니다." : "공식 홈페이지에서 공지를 불러오는 중입니다."}<br />실제 기기 알림은 위에서 권한을 켜면 받을 수 있어요.</p>
+          <p className="demo-note">{sourceStatus === "live" ? `${university.shortName} 공식 홈페이지 연결됨${fetchedAt ? ` · ${new Date(fetchedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 확인` : ""} · 5분마다 갱신` : sourceStatus === "error" ? `${university.shortName} 공식 홈페이지 연결 실패 · 샘플 공지를 표시합니다.` : `${university.shortName} 공식 홈페이지에서 공지를 불러오는 중입니다.`}<br />실제 기기 알림은 위에서 권한을 켜면 받을 수 있어요.</p>
         </section>
       </div> : view === "preview" ? <div className="workspace preview-view">
         <section className="preview-panel" aria-labelledby="preview-title">
@@ -265,18 +291,21 @@ export default function Home() {
             <div className="phone" aria-label="휴대폰 푸시 알림 미리보기">
               <div className="phone-top"><span>9:41</span><div className="dynamic-island" /><span>5G ◒</span></div>
               <div className="phone-date"><strong>9월 19일 토요일</strong><span>14:32</span></div>
-              {push ? <button className="push-card" onClick={() => setDetail(push)}><div className="push-head"><span className="push-icon"><Bell /></span><strong>가대알림</strong><time>{push.date}</time></div><h3>관심 공지를 찾았어요</h3><p>{push.title}</p><span className="match-pill">‘{matchingKeywords(push, keywords)[0]}’ 키워드와 일치</span><small>푸시 미리보기 · 눌러서 원문 확인</small></button> : <div className="phone-empty"><span><Bell /></span><strong>{hasRun ? "일치하는 최신 공지가 없어요" : "알림이 여기에 도착해요"}</strong><p>{hasRun ? "다른 키워드를 등록하고 다시 확인해 보세요." : "최신 공지 확인 버튼을 누르면 푸시 형태로 확인할 수 있어요."}</p></div>}
+              {push ? <button className="push-card" onClick={() => setDetail(push)}><div className="push-head"><span className="push-icon"><Bell /></span><strong>캠퍼스알림</strong><time>{push.date}</time></div><h3>관심 공지를 찾았어요</h3><p>{push.title}</p><span className="match-pill">‘{matchingKeywords(push, keywords)[0]}’ 키워드와 일치</span><small>{university.shortName} 푸시 미리보기 · 눌러서 원문 확인</small></button> : <div className="phone-empty"><span><Bell /></span><strong>{hasRun ? "일치하는 최신 공지가 없어요" : "알림이 여기에 도착해요"}</strong><p>{hasRun ? "다른 키워드를 등록하고 다시 확인해 보세요." : "최신 공지 확인 버튼을 누르면 푸시 형태로 확인할 수 있어요."}</p></div>}
               <div className="phone-bottom"><span>⌁</span><span>◉</span></div>
             </div>
           </div>
-          <nav className="page-links" aria-label="공지 목록 이동">
-            <button onClick={() => openPage("matches")}><span className="page-link-icon matched-icon"><ListFilter /></span><span><small>내 관심 키워드</small><strong>일치 공지 {matches.length}건 모두 보기</strong></span><ChevronRight /></button>
-            <button onClick={() => openPage("all")}><span className="page-link-icon"><Newspaper /></span><span><small>가톨릭대학교 공식 홈페이지</small><strong>전체 최신 공지 {notices.length}건 보기</strong></span><ChevronRight /></button>
+          <nav className="notice-navigation" aria-label="공지 목록 이동">
+            <div className="notice-navigation-heading"><strong>공지 둘러보기</strong><span>필요한 목록을 골라 상세 내용을 확인하세요.</span></div>
+            <div className="page-links">
+              <button onClick={() => openPage("matches")}><span className="page-link-icon matched-icon"><ListFilter /></span><span><small>내 관심 키워드</small><strong>일치 공지 보기</strong><em>{matches.length}건 · 키워드와 일치한 공지</em></span><ChevronRight /></button>
+              <button onClick={() => openPage("all")}><span className="page-link-icon"><Newspaper /></span><span><small>{university.name} 공식 홈페이지</small><strong>전체 최신 공지 보기</strong><em>{notices.length}건 · 최신 공지 전체</em></span><ChevronRight /></button>
+            </div>
           </nav>
         </section>
       </div> : <section className="results-page" aria-labelledby="results-title">
-        <div className="results-toolbar"><Button variant="ghost" onClick={goBack}><ArrowLeft /> 뒤로가기</Button>{view === "all" && <a href="https://www.catholic.ac.kr/ko/campuslife/notice.do" target="_blank" rel="noreferrer">학교 공지 전체 보기 <ExternalLink /></a>}</div>
-        <div className="results-heading"><div className="eyebrow"><span /> {view === "matches" ? "내 관심 키워드" : "공식 홈페이지"}</div><h1 id="results-title">{view === "matches" ? "키워드 일치 공지" : "전체 최신 공지"}</h1><p>{view === "matches" ? `‘${keywords.join(" · ")}’ 중 하나 이상 일치한 공지 ${matches.length}건입니다.` : `가톨릭대학교 공식 홈페이지에서 가져온 최신 공지 ${notices.length}건입니다.`}</p></div>
+        <div className="results-toolbar"><Button variant="ghost" onClick={goBack}><ArrowLeft /> 뒤로가기</Button>{view === "all" && <a href={university.sourceUrl} target="_blank" rel="noreferrer">학교 공지 전체 보기 <ExternalLink /></a>}</div>
+        <div className="results-heading"><div className="eyebrow"><span /> {view === "matches" ? "내 관심 키워드" : "공식 홈페이지"}</div><h1 id="results-title">{view === "matches" ? "키워드 일치 공지" : "전체 최신 공지"}</h1><p>{view === "matches" ? `‘${keywords.join(" · ")}’ 중 하나 이상 일치한 공지 ${matches.length}건입니다.` : `${university.name} 공식 홈페이지에서 가져온 최신 공지 ${notices.length}건입니다.`}</p></div>
         <div className="results-card notice-list">
           {pageNotices.map((notice) => {
             const found = matchingKeywords(notice, keywords);
@@ -288,7 +317,7 @@ export default function Home() {
 
       <Sheet open={Boolean(detail)} onOpenChange={(open) => !open && setDetail(null)}>
         <SheetContent className="notice-sheet sm:max-w-[520px]">
-          {detail && <><SheetHeader className="sheet-header"><Badge className="sample-badge">{detail.id.startsWith("sample-") ? "연결 실패 시 샘플" : "가톨릭대학교 공식 공지"}</Badge><SheetTitle className="sheet-title">{detail.title}</SheetTitle><SheetDescription>{detail.category} · {detail.department} · {detail.date}</SheetDescription></SheetHeader><div className="sheet-body"><div className="match-box"><Sparkles /><span><small>{matchingKeywords(detail, keywords).length ? "알림을 보여준 이유" : "전체 공지에서 선택"}</small><strong>{matchingKeywords(detail, keywords).length ? `‘${matchingKeywords(detail, keywords).join("·")}’ 키워드가 발견됐어요` : "관심 키워드와 관계없이 원문을 확인할 수 있어요"}</strong></span></div><div className="notice-copy"><h3>원문에서 확인하세요</h3><p>신청 대상, 기간, 첨부파일 등 자세한 내용은 가톨릭대학교 공식 공지 페이지에서 확인할 수 있어요.</p></div><a className="simulate-button inline-flex h-11 items-center justify-center gap-2 rounded-md px-4 font-semibold" href={detail.url} target="_blank" rel="noreferrer">공식 원문 보기 <ExternalLink className="h-4 w-4" /></a><p className="source-note"><BookOpen /> 공지 제목과 게시 정보는 학교 공식 홈페이지에서 가져왔습니다. 알림 권한을 켜면 실제 웹 푸시도 받을 수 있습니다.</p></div></>}
+          {detail && <><SheetHeader className="sheet-header"><Badge className="sample-badge">{detail.id.includes("-sample-") ? "연결 실패 시 샘플" : `${detail.universityName} 공식 공지`}</Badge><SheetTitle className="sheet-title">{detail.title}</SheetTitle><SheetDescription>{detail.category} · {detail.department} · {detail.date}</SheetDescription></SheetHeader><div className="sheet-body"><div className="match-box"><Sparkles /><span><small>{matchingKeywords(detail, keywords).length ? "알림을 보여준 이유" : "전체 공지에서 선택"}</small><strong>{matchingKeywords(detail, keywords).length ? `‘${matchingKeywords(detail, keywords).join("·")}’ 키워드가 발견됐어요` : "관심 키워드와 관계없이 원문을 확인할 수 있어요"}</strong></span></div><div className="notice-copy"><h3>원문에서 확인하세요</h3><p>신청 대상, 기간, 첨부파일 등 자세한 내용은 {detail.universityName} 공식 공지 페이지에서 확인할 수 있어요.</p></div><a className="simulate-button inline-flex h-11 items-center justify-center gap-2 rounded-md px-4 font-semibold" href={detail.url} target="_blank" rel="noreferrer">공식 원문 보기 <ExternalLink className="h-4 w-4" /></a><p className="source-note"><BookOpen /> 공지 제목과 게시 정보는 학교 공식 홈페이지에서 가져왔습니다. 알림 권한을 켜면 실제 웹 푸시도 받을 수 있습니다.</p></div></>}
         </SheetContent>
       </Sheet>
     </main>

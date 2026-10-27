@@ -18,6 +18,9 @@ create table if not exists public.sent_notifications (
   primary key (subscription_id, article_id)
 );
 
+alter table public.push_subscriptions
+  add column if not exists school_id text not null default 'catholic';
+
 alter table public.push_subscriptions enable row level security;
 alter table public.sent_notifications enable row level security;
 

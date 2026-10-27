@@ -12,23 +12,26 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Push service is not fully configured" }, { status: 503 });
   }
 
-  const notices = await fetchOfficialNotices();
   const subscriptions = await listSubscriptions();
+  const schools = [...new Set(subscriptions.map((subscription) => subscription.schoolId))];
+  const results = await Promise.allSettled(schools.map((schoolId) => fetchOfficialNotices(schoolId)));
+  const notices = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+  const unavailableSchools = schools.filter((_, index) => results[index].status === "rejected");
   const sentRows = await listSent(notices.map((notice) => notice.id));
   const sent = new Set(sentRows.map((row) => `${row.subscription_id}:${row.article_id}`));
   let delivered = 0;
   let deactivated = 0;
 
   for (const subscription of subscriptions) {
-    const matching = notices.filter((notice) => matchingKeywords(notice, subscription.keywords).length && !sent.has(`${subscription.id}:${notice.id}`));
+    const matching = notices.filter((notice) => notice.universityId === subscription.schoolId && matchingKeywords(notice, subscription.keywords).length && !sent.has(`${subscription.id}:${notice.id}`));
     for (const notice of matching) {
       try {
         const keyword = matchingKeywords(notice, subscription.keywords)[0];
         await sendPush(toPushSubscription(subscription), {
-          title: `관심 공지 · ${keyword}`,
+          title: `${notice.universityName} 관심 공지 · ${keyword}`,
           body: notice.title,
           url: notice.url,
-          tag: `cuk-notice-${notice.id}`,
+          tag: `campus-notice-${notice.id}`,
         });
         await markSeen(subscription.id, [notice.id]);
         delivered += 1;
@@ -44,5 +47,5 @@ export async function GET(request: Request) {
     }
   }
 
-  return NextResponse.json({ checked: notices.length, subscriptions: subscriptions.length, delivered, deactivated });
+  return NextResponse.json({ checked: notices.length, subscriptions: subscriptions.length, delivered, deactivated, unavailableSchools });
 }

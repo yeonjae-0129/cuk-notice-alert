@@ -1,4 +1,5 @@
 import webpush, { type PushSubscription } from "web-push";
+import type { UniversityId } from "@/lib/notices";
 
 export type StoredSubscription = {
   id: string;
@@ -6,6 +7,7 @@ export type StoredSubscription = {
   p256dh: string;
   auth: string;
   keywords: string[];
+  schoolId: UniversityId;
 };
 
 export function pushConfigured() {
