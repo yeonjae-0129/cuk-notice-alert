@@ -10,7 +10,7 @@ const schema = z.object({
     keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
   }),
   keywords: z.array(z.string().trim().min(1).max(40)).min(1).max(10),
-  schoolId: z.enum(["catholic", "snu", "yonsei", "korea", "sogang", "skku", "hanyang"]),
+  schoolId: z.enum(["catholic", "snu", "yonsei", "korea", "sogang", "skku"]),
 });
 
 export async function POST(request: Request) {
