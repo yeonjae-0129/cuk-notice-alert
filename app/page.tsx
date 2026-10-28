@@ -246,7 +246,7 @@ export default function Home() {
         </div>}
         <div className="privacy-note"><ShieldCheck /> 학교 계정 정보는 입력하거나 전송하지 않습니다.</div>
       </section>
-      <p className="mockup-label">6개 대학 공지 채널</p>
+      <p className="mockup-label">5개 대학 공지 채널</p>
     </main>
   );
   }

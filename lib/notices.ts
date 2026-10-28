@@ -1,4 +1,4 @@
-export type UniversityId = "catholic" | "snu" | "yonsei" | "korea" | "sogang" | "skku";
+export type UniversityId = "catholic" | "snu" | "yonsei" | "korea" | "skku";
 
 export type University = {
   id: UniversityId;
@@ -13,7 +13,6 @@ export const UNIVERSITIES: University[] = [
   { id: "snu", name: "서울대학교", shortName: "서울대", sourceUrl: "https://www.snu.ac.kr/snunow/notice/genernal" },
   { id: "yonsei", name: "연세대학교", shortName: "연세대", sourceUrl: "https://www.yonsei.ac.kr/bbs/sc/58/artclList.do" },
   { id: "korea", name: "고려대학교", shortName: "고려대", sourceUrl: "https://www.korea.ac.kr/ko/566/subview.do" },
-  { id: "sogang", name: "서강대학교", shortName: "서강대", sourceUrl: "https://www.sogang.ac.kr/ko/home/notice", feedUrl: "https://www.sogang.ac.kr/api/api/v1/mainKo/BbsData/boardListMultiConfigId?pageNum=1&pageSize=10&bbsConfigFks=1&title=&content=&username=&category=" },
   { id: "skku", name: "성균관대학교", shortName: "성균관대", sourceUrl: "https://www.skku.edu/skku/campus/skk_comm/notice01.do?article.offset=0&articleLimit=10&mode=list" },
 ];
 
@@ -135,20 +134,6 @@ function koreaNotices(html: string, university: University) {
   });
 }
 
-function sogangNotices(body: string, university: University) {
-  const data = JSON.parse(body) as { data?: { list?: Array<{ pkId?: number; title?: string; displayName?: string; regDate?: string }> } };
-  const seen = new Set<number>();
-  return (data.data?.list ?? []).flatMap((item) => {
-    if (!item.pkId || !item.title || seen.has(item.pkId)) return [];
-    seen.add(item.pkId);
-    const date = item.regDate?.match(/^(\d{4})(\d{2})(\d{2})/)?.slice(1).join(".") ?? "";
-    return [notice(university, {
-      id: String(item.pkId), title: item.title, category: "일반공지", department: item.displayName || university.name, date,
-      url: `https://www.sogang.ac.kr/ko/detail/${item.pkId}`,
-    })];
-  });
-}
-
 function skkuNotices(html: string, university: University) {
   const seen = new Set<string>();
   const items = html.match(/<dl class=["']board-list-content-wrap[\s\S]*?<\/dl>/gi) ?? [];
@@ -177,7 +162,7 @@ export async function fetchOfficialNotices(universityId: UniversityId = "catholi
   if (!university) throw new Error("Unsupported university");
   const response = await fetch(university.feedUrl ?? university.sourceUrl, {
     headers: {
-      Accept: university.id === "sogang" ? "application/json" : "text/html,application/xhtml+xml",
+      Accept: "text/html,application/xhtml+xml",
       "Accept-Language": "ko-KR,ko;q=0.9",
       "User-Agent": "Campus-Notice-Alert/1.0 (student web application)",
     },
@@ -187,7 +172,7 @@ export async function fetchOfficialNotices(universityId: UniversityId = "catholi
   if (!response.ok) throw new Error(`Official site responded with ${response.status}`);
 
   const html = await response.text();
-  const parser = { catholic: catholicNotices, snu: snuNotices, yonsei: yonseiNotices, korea: koreaNotices, sogang: sogangNotices, skku: skkuNotices }[university.id];
+  const parser = { catholic: catholicNotices, snu: snuNotices, yonsei: yonseiNotices, korea: koreaNotices, skku: skkuNotices }[university.id];
   const notices = parser(html, university).slice(0, 10);
   if (!notices.length) throw new Error("No notices could be parsed");
   return notices;
