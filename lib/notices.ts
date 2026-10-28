@@ -1,4 +1,4 @@
-export type UniversityId = "catholic" | "snu" | "yonsei" | "korea" | "sogang" | "skku" | "hanyang";
+export type UniversityId = "catholic" | "snu" | "yonsei" | "korea" | "sogang" | "skku";
 
 export type University = {
   id: UniversityId;
@@ -15,7 +15,6 @@ export const UNIVERSITIES: University[] = [
   { id: "korea", name: "고려대학교", shortName: "고려대", sourceUrl: "https://www.korea.ac.kr/ko/566/subview.do" },
   { id: "sogang", name: "서강대학교", shortName: "서강대", sourceUrl: "https://www.sogang.ac.kr/ko/home/notice", feedUrl: "https://www.sogang.ac.kr/api/api/v1/mainKo/BbsData/boardListMultiConfigId?pageNum=1&pageSize=10&bbsConfigFks=1&title=&content=&username=&category=" },
   { id: "skku", name: "성균관대학교", shortName: "성균관대", sourceUrl: "https://www.skku.edu/skku/campus/skk_comm/notice01.do?article.offset=0&articleLimit=10&mode=list" },
-  { id: "hanyang", name: "한양대학교", shortName: "한양대", sourceUrl: "https://www.hanyang.ac.kr/notice_all" },
 ];
 
 export const NOTICE_URL = UNIVERSITIES[0].sourceUrl;
@@ -169,24 +168,6 @@ function skkuNotices(html: string, university: University) {
   });
 }
 
-function hanyangNotices(html: string, university: University) {
-  const seen = new Set<string>();
-  const expression = /<h4><a href=["']([^"']*entryId=(\d+)[^"']*)["']>([\s\S]*?)<\/a><\/h4>\s*<p>([\s\S]*?)<\/p>/gi;
-  return [...html.matchAll(expression)].flatMap((match) => {
-    const [, href, id, rawTitle, metadata] = match;
-    const title = decodeHtml(rawTitle);
-    if (!id || !title || seen.has(id)) return [];
-    seen.add(id);
-    const labels = [...metadata.matchAll(/data-itemvalue=["']([^"']+)["']/gi)].map((label) => label[1]);
-    return [notice(university, {
-      id, title, category: labels[1] || labels[0] || "공지",
-      department: firstMatch(metadata, /<\/span>\s*([^<]+?)\s*<span class=["']date/i) || university.name,
-      date: firstMatch(metadata, /class=["']date["'][^>]*>\s*&nbsp;\/\s*([\d. ]+)/i),
-      url: decodeHtml(href),
-    })];
-  });
-}
-
 export function universityFromId(id: string | null | undefined) {
   return UNIVERSITIES.find((university) => university.id === id) ?? null;
 }
@@ -206,7 +187,7 @@ export async function fetchOfficialNotices(universityId: UniversityId = "catholi
   if (!response.ok) throw new Error(`Official site responded with ${response.status}`);
 
   const html = await response.text();
-  const parser = { catholic: catholicNotices, snu: snuNotices, yonsei: yonseiNotices, korea: koreaNotices, sogang: sogangNotices, skku: skkuNotices, hanyang: hanyangNotices }[university.id];
+  const parser = { catholic: catholicNotices, snu: snuNotices, yonsei: yonseiNotices, korea: koreaNotices, sogang: sogangNotices, skku: skkuNotices }[university.id];
   const notices = parser(html, university).slice(0, 10);
   if (!notices.length) throw new Error("No notices could be parsed");
   return notices;
