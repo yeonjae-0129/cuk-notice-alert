@@ -281,7 +281,7 @@ export default function Home() {
             <p>{pushState === "idle" && "권한을 허용하면 앱이 닫혀 있어도 알림을 받을 수 있어요."}{pushState === "enabled" && "현재 키워드와 구독이 서버에 저장됐어요."}{pushState === "test-ready" && "브라우저 구독은 준비됐지만 자동 발송 DB 설정이 필요해요."}{pushState === "sent" && "운영체제 알림 창에서 실제 도착 여부를 확인해 주세요."}{pushState === "denied" && "브라우저 설정에서 이 사이트의 알림을 허용해 주세요."}{pushState === "unsupported" && "이 브라우저는 웹 푸시를 지원하지 않아요."}{pushState === "config-missing" && "서버의 푸시 키 설정이 아직 필요해요."}{pushState === "error" && "푸시 설정에 실패했어요. 잠시 후 다시 시도해 주세요."}</p>
           </div>
           <Button className="simulate-button" size="lg" onClick={simulateArrival} disabled={checking}>{checking ? <><span className="spinner" /> 공식 공지를 확인하고 있어요</> : <><RefreshCw /> 최신 공지 확인하고 미리보기</>}</Button>
-          <p className="demo-note">{sourceStatus === "live" ? `${university.shortName} 공식 홈페이지 연결됨${fetchedAt ? ` · ${new Date(fetchedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 확인` : ""} · 5분마다 갱신` : sourceStatus === "error" ? `${university.shortName} 공식 홈페이지 연결 실패 · 샘플 공지를 표시합니다.` : `${university.shortName} 공식 홈페이지에서 공지를 불러오는 중입니다.`}<br />실제 기기 알림은 위에서 권한을 켜면 받을 수 있어요.</p>
+          <p className="demo-note">{sourceStatus === "live" ? `${university.shortName} 공식 홈페이지 연결됨${fetchedAt ? ` · ${new Date(fetchedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 확인` : ""} · 하루 1회 자동 확인` : sourceStatus === "error" ? `${university.shortName} 공식 홈페이지 연결 실패 · 샘플 공지를 표시합니다.` : `${university.shortName} 공식 홈페이지에서 공지를 불러오는 중입니다.`}<br />실제 기기 알림은 위에서 권한을 켜면 받을 수 있어요.</p>
         </section>
       </div> : view === "preview" ? <div className="workspace preview-view">
         <section className="preview-panel" aria-labelledby="preview-title">
