@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Bell, BellRing, BookOpen, Check, ChevronRight, ExternalLink, ListFilter, Newspaper, Plus, RefreshCw, Search, Send, ShieldCheck, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Bell, BellRing, BookOpen, Check, ChevronRight, Download, ExternalLink, ListFilter, Newspaper, Plus, RefreshCw, Search, Send, ShieldCheck, Sparkles, X } from "lucide-react";
 import { UNIVERSITIES, type UniversityId } from "@/lib/notices";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 type Notice = { id: string; universityId: UniversityId; universityName: string; title: string; category: string; department: string; date: string; url: string };
 type PushState = "idle" | "working" | "enabled" | "test-ready" | "sent" | "denied" | "permission-unavailable" | "unsupported" | "config-missing" | "error";
 type PageView = "settings" | "preview" | "matches" | "all";
+type InstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
 
 const fallbackNotices = (schoolId: UniversityId): Notice[] => {
   const university = UNIVERSITIES.find((item) => item.id === schoolId) ?? UNIVERSITIES[0];
@@ -46,16 +47,27 @@ export default function Home() {
   const [sourceStatus, setSourceStatus] = useState<"loading" | "live" | "error">("loading");
   const [fetchedAt, setFetchedAt] = useState("");
   const [pushState, setPushState] = useState<PushState>("idle");
+  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const university = UNIVERSITIES.find((item) => item.id === schoolId) ?? UNIVERSITIES[0];
   const matches = useMemo(() => notices.filter((notice) => matchingKeywords(notice, keywords).length), [keywords, notices]);
   const push = hasRun && !checking ? matches[0] ?? null : null;
   const pageNotices = view === "matches" ? matches : notices;
 
   useEffect(() => {
-    if ("Notification" in window && Notification.permission === "denied") {
-      setPushState("denied");
-    }
+    const captureInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as InstallPromptEvent);
+    };
+    window.addEventListener("beforeinstallprompt", captureInstallPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", captureInstallPrompt);
   }, []);
+
+  async function installApp() {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    if (choice.outcome === "accepted") setInstallPrompt(null);
+  }
 
   function openPage(next: Exclude<PageView, "settings">) {
     window.history.pushState({ noticeView: next }, "", `?view=${next}`);
@@ -294,6 +306,7 @@ export default function Home() {
               {(pushState === "enabled" || pushState === "test-ready" || pushState === "sent") && <Button type="button" variant="outline" onClick={sendTestPush}><Send /> 테스트 푸시</Button>}
             </div>
             <p>{pushState === "idle" && "관심 키워드를 추가한 뒤 권한을 허용하면 앱이 닫혀 있어도 알림을 받을 수 있어요."}{pushState === "enabled" && "현재 키워드와 구독이 서버에 저장됐어요."}{pushState === "test-ready" && "브라우저 구독은 준비됐지만 자동 발송 DB 설정이 필요해요."}{pushState === "sent" && "운영체제 알림 창에서 실제 도착 여부를 확인해 주세요."}{pushState === "denied" && "Chrome 주소창 왼쪽 자물쇠 → 사이트 설정 → 알림을 ‘허용’으로 바꾼 뒤, 이 페이지를 새로고침해 주세요."}{pushState === "permission-unavailable" && "알림 권한 창을 열 수 없어요. Chrome 또는 Edge에서 다시 시도해 주세요."}{pushState === "unsupported" && "이 브라우저는 웹 푸시를 지원하지 않아요."}{pushState === "config-missing" && "서버의 푸시 키 설정이 아직 필요해요."}{pushState === "error" && "푸시 설정에 실패했어요. 잠시 후 다시 시도해 주세요."}</p>
+            {installPrompt && <Button type="button" className="install-button" variant="outline" onClick={installApp}><Download /> 휴대폰 홈 화면에 앱 설치</Button>}
           </div>
           <Button className="simulate-button" size="lg" onClick={simulateArrival} disabled={checking}>{checking ? <><span className="spinner" /> 공식 공지를 확인하고 있어요</> : <><RefreshCw /> 최신 공지 확인하고 미리보기</>}</Button>
           <p className="demo-note">{sourceStatus === "live" ? `${university.shortName} 공식 홈페이지 연결됨${fetchedAt ? ` · ${new Date(fetchedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 확인` : ""} · 하루 1회 자동 확인` : sourceStatus === "error" ? `${university.shortName} 공식 홈페이지 연결 실패 · 샘플 공지를 표시합니다.` : `${university.shortName} 공식 홈페이지에서 공지를 불러오는 중입니다.`}<br />실제 기기 알림은 위에서 권한을 켜면 받을 수 있어요.</p>
