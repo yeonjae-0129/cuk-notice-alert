@@ -51,6 +51,12 @@ export default function Home() {
   const push = hasRun && !checking ? matches[0] ?? null : null;
   const pageNotices = view === "matches" ? matches : notices;
 
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "denied") {
+      setPushState("denied");
+    }
+  }, []);
+
   function openPage(next: Exclude<PageView, "settings">) {
     window.history.pushState({ noticeView: next }, "", `?view=${next}`);
     setView(next);
@@ -87,9 +93,13 @@ export default function Home() {
       setPushState("config-missing");
       return null;
     }
+    if (Notification.permission === "denied") {
+      setPushState("denied");
+      return null;
+    }
     const registration = await navigator.serviceWorker.register("/sw.js");
     let subscription = await registration.pushManager.getSubscription();
-    if (!subscription && create) {
+    if (create && Notification.permission !== "granted") {
       const permission = await Promise.race<NotificationPermission>([
         Notification.requestPermission(),
         new Promise((resolve) => window.setTimeout(() => resolve("default"), 8000)),
@@ -98,6 +108,8 @@ export default function Home() {
         setPushState(permission === "denied" ? "denied" : "permission-unavailable");
         return null;
       }
+    }
+    if (!subscription && create) {
       subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: applicationServerKey(publicKey),
@@ -278,10 +290,10 @@ export default function Home() {
           <div className="push-setup-card">
             <div className="push-setup-heading"><BellRing /><span><small>실제 웹 푸시</small><strong>{pushState === "enabled" ? "새 공지 자동 알림 사용 중" : pushState === "sent" ? "테스트 알림을 전송했어요" : "이 기기에서 알림 받기"}</strong></span></div>
             <div className="push-actions">
-              <Button type="button" onClick={enableRealPush} disabled={pushState === "working"}>{pushState === "working" ? "처리 중…" : pushState === "enabled" ? "키워드 설정 갱신" : "알림 권한 켜기"}</Button>
+              <Button type="button" onClick={enableRealPush} disabled={pushState === "working" || !keywords.length}>{pushState === "working" ? "처리 중…" : !keywords.length ? "키워드를 먼저 추가하세요" : pushState === "enabled" ? "키워드 설정 갱신" : "알림 권한 켜기"}</Button>
               {(pushState === "enabled" || pushState === "test-ready" || pushState === "sent") && <Button type="button" variant="outline" onClick={sendTestPush}><Send /> 테스트 푸시</Button>}
             </div>
-            <p>{pushState === "idle" && "권한을 허용하면 앱이 닫혀 있어도 알림을 받을 수 있어요."}{pushState === "enabled" && "현재 키워드와 구독이 서버에 저장됐어요."}{pushState === "test-ready" && "브라우저 구독은 준비됐지만 자동 발송 DB 설정이 필요해요."}{pushState === "sent" && "운영체제 알림 창에서 실제 도착 여부를 확인해 주세요."}{pushState === "denied" && "브라우저 설정에서 이 사이트의 알림을 허용해 주세요."}{pushState === "permission-unavailable" && "알림 권한 창을 열 수 없어요. Chrome 또는 Edge에서 다시 시도해 주세요."}{pushState === "unsupported" && "이 브라우저는 웹 푸시를 지원하지 않아요."}{pushState === "config-missing" && "서버의 푸시 키 설정이 아직 필요해요."}{pushState === "error" && "푸시 설정에 실패했어요. 잠시 후 다시 시도해 주세요."}</p>
+            <p>{pushState === "idle" && "관심 키워드를 추가한 뒤 권한을 허용하면 앱이 닫혀 있어도 알림을 받을 수 있어요."}{pushState === "enabled" && "현재 키워드와 구독이 서버에 저장됐어요."}{pushState === "test-ready" && "브라우저 구독은 준비됐지만 자동 발송 DB 설정이 필요해요."}{pushState === "sent" && "운영체제 알림 창에서 실제 도착 여부를 확인해 주세요."}{pushState === "denied" && "Chrome 주소창 왼쪽 자물쇠 → 사이트 설정 → 알림을 ‘허용’으로 바꾼 뒤, 이 페이지를 새로고침해 주세요."}{pushState === "permission-unavailable" && "알림 권한 창을 열 수 없어요. Chrome 또는 Edge에서 다시 시도해 주세요."}{pushState === "unsupported" && "이 브라우저는 웹 푸시를 지원하지 않아요."}{pushState === "config-missing" && "서버의 푸시 키 설정이 아직 필요해요."}{pushState === "error" && "푸시 설정에 실패했어요. 잠시 후 다시 시도해 주세요."}</p>
           </div>
           <Button className="simulate-button" size="lg" onClick={simulateArrival} disabled={checking}>{checking ? <><span className="spinner" /> 공식 공지를 확인하고 있어요</> : <><RefreshCw /> 최신 공지 확인하고 미리보기</>}</Button>
           <p className="demo-note">{sourceStatus === "live" ? `${university.shortName} 공식 홈페이지 연결됨${fetchedAt ? ` · ${new Date(fetchedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 확인` : ""} · 하루 1회 자동 확인` : sourceStatus === "error" ? `${university.shortName} 공식 홈페이지 연결 실패 · 샘플 공지를 표시합니다.` : `${university.shortName} 공식 홈페이지에서 공지를 불러오는 중입니다.`}<br />실제 기기 알림은 위에서 권한을 켜면 받을 수 있어요.</p>
